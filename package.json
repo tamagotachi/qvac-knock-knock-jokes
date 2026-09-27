@@ -1,0 +1,10 @@
+{
+  "name": "qvac-knock-knock-jokes",
+  "version": "1.0.0",
+  "description": "Knock-Knock Joke Maker: an on-device AI invents family-friendly knock-knock jokes about any theme or name, and an act-it-out mode lets you perform them. Powered by the QVAC SDK.",
+  "type": "module",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "@qvac/sdk": "^0.19.0" },
+  "license": "MIT"
+}
