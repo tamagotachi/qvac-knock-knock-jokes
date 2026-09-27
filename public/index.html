@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Knock-Knock Joke Maker</title>
+<style>
+  :root { --bg: #fff9db; --ink: #3b2a00; --muted: #7f6a2e; --line: #f3e3a4; --card: #fff; --door: #a0522d; --blue: #1c7ed6; --green: #2b8a3e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.5 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 26px 16px 56px; }
+  h1 { font: 900 38px/1.05 system-ui, sans-serif; margin: 0; text-align: center; } h1 span { color: var(--door); } .sub { color: var(--muted); margin: 6px 0 8px; text-align: center; }
+  #status { font-size: 13px; color: var(--muted); margin: 0 0 12px; text-align: center; } #status.ok { color: var(--green); } #status.err { color: #c92a2a; }
+  .panel { background: var(--card); border: 2px solid var(--line); border-radius: 18px; padding: 16px 18px; margin-bottom: 16px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; } .chips button { background: #fff; color: var(--ink); border: 2px solid var(--line); border-radius: 99px; padding: 5px 14px; font-weight: 700; } .chips button.on { background: var(--ink); color: #fff; border-color: var(--ink); }
+  input { font: inherit; padding: 10px 12px; border: 2px solid var(--line); border-radius: 12px; background: #fff; color: var(--ink); flex: 1 1 220px; min-width: 0; }
+  input:focus-visible, button:focus-visible { outline: 3px solid #ffd43b; outline-offset: 2px; }
+  button { font: inherit; font-weight: 800; padding: 10px 18px; border: 0; border-radius: 12px; background: var(--door); color: #fff; cursor: pointer; }
+  button.ghost { background: #fff; color: var(--ink); border: 2px solid var(--line); padding: 5px 12px; font-size: 14px; } button.busy { opacity: .55; cursor: progress; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: center; margin-top: 12px; } .note { color: var(--muted); font-size: 14px; min-height: 20px; margin: 8px 0 0; text-align: center; }
+  .joke { background: var(--card); border: 2px solid var(--line); border-radius: 16px; padding: 12px 16px; margin-bottom: 10px; } .joke .lines { font-size: 17px; } .joke .lines div:nth-child(odd) { color: var(--door); font-weight: 700; } .joke .lines .punch { font-weight: 800; color: var(--blue); }
+  .stage { background: #fff; border: 3px dashed var(--door); border-radius: 22px; padding: 22px; text-align: center; margin-bottom: 16px; } .stage .door { font-size: 60px; } .stage .said { font: 700 26px/1.4 Georgia, serif; min-height: 40px; margin: 10px 0; }
+  .stage .who { font-size: 14px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; } .fav { display: flex; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); } .fav span { flex: 1; } .empty { color: var(--muted); text-align: center; } .hidden { display: none; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Knock-Knock <span>Joke Maker</span> &#128682;</h1>
+  <p class="sub">Pick a theme or type a name, get brand-new knock-knock jokes, then act them out!</p>
+  <p id="status">Checking the AI joke maker...</p>
+  <section class="panel">
+    <div class="chips" id="themes"></div>
+    <div class="row"><input id="name" placeholder="Or use a name or word (like your friend's or pet's name)" maxlength="30" autocomplete="off" aria-label="Name or word"><button id="go">Make jokes</button></div>
+    <p class="note" id="note"></p>
+  </section>
+  <section class="stage hidden" id="stage" aria-live="polite">
+    <div class="door" aria-hidden="true">🚪</div><div class="who" id="speaker"></div><div class="said" id="said"></div>
+    <div class="row"><button id="stepBtn"></button><button class="ghost" id="closeStage">Close</button></div>
+  </section>
+  <section id="list"></section>
+  <section class="panel"><strong>⭐ Favorite jokes</strong><div id="favs"></div></section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const THEMES = ["animals", "food", "school", "silly", "holidays", "space"];
+// Classic knock-knock jokes for when the AI isn't ready yet
+const CLASSICS = [["Lettuce", "Lettuce in, it's cold out here!"], ["Boo", "Don't cry, it's only a joke!"], ["Orange", "Orange you glad I didn't say banana?"], ["Cow says", "No, a cow says moooo!"], ["Tank", "You're welcome!"], ["Cash", "No thanks, I prefer peanuts!"], ["Olive", "Olive you, and I miss you!"], ["Water", "Water you doing? Let me in!"], ["Atch", "Bless you!"], ["Harry", "Harry up, it's cold out here!"], ["Justin", "Justin time for dinner!"], ["Honey bee", "Honey bee a dear and open the door!"]];
+let theme = "animals", jokes = [], used = [], busy = false, ai = { ready: false, message: "Loading...", percent: null, error: null };
+let favs = []; try { favs = JSON.parse(localStorage.getItem("knockFavs") || "[]"); } catch {}
+const persist = () => { try { localStorage.setItem("knockFavs", JSON.stringify(favs)); } catch {} };
+THEMES.forEach((t) => { const b = document.createElement("button"); b.textContent = t; b.className = t === theme ? "on" : ""; b.addEventListener("click", () => { theme = t; $("name").value = ""; document.querySelectorAll("#themes button").forEach((x) => x.classList.toggle("on", x === b)); }); $("themes").append(b); });
+
+function jokeEl(j) {
+  const d = document.createElement("div"); d.className = "joke"; const l = document.createElement("div"); l.className = "lines";
+  [["Knock knock!"], ["Who's there?"], [j.who + "."], [j.who + " who?"], [j.punch, "punch"]].forEach(([t, c]) => { const x = document.createElement("div"); x.textContent = t; if (c) x.className = c; l.append(x); });
+  const r = document.createElement("div"); r.className = "row"; r.style.justifyContent = "flex-start"; const act = document.createElement("button"); act.className = "ghost"; act.textContent = "\ud83c\udfad Act it out"; act.addEventListener("click", () => perform(j));
+  const f = document.createElement("button"); f.className = "ghost"; const on = () => favs.some((x) => x.who === j.who && x.punch === j.punch); f.textContent = on() ? "\u2b50 Saved" : "\u2606 Save"; f.addEventListener("click", () => { favs = on() ? favs.filter((x) => !(x.who === j.who && x.punch === j.punch)) : [...favs, j]; persist(); drawFavs(); f.textContent = on() ? "\u2b50 Saved" : "\u2606 Save"; });
+  const c = document.createElement("button"); c.className = "ghost"; c.textContent = "Copy"; c.addEventListener("click", async () => { try { await navigator.clipboard.writeText("Knock knock!\nWho's there?\n" + j.who + ".\n" + j.who + " who?\n" + j.punch); c.textContent = "Copied!"; } catch { c.textContent = "Press Ctrl+C"; } });
+  r.append(act, f, c); d.append(l, r); return d;
+}
+function drawList() { const box = $("list"); box.innerHTML = ""; jokes.forEach((j) => box.append(jokeEl(j))); }
+
+// ---------- Act it out: one line at a time, with a little drum sound at the end ----------
+let step = 0, cur = null;
+const SCRIPT = (j) => [["You", "Knock knock!", "Who's there?"], ["Friend", "Who's there?", null], ["You", j.who + ".", j.who + " who?"], ["Friend", j.who + " who?", null], ["You", j.punch, null]];
+function perform(j) { cur = j; step = 0; $("stage").classList.remove("hidden"); render(); $("stage").scrollIntoView({ behavior: "smooth" }); $("stepBtn").focus(); }
+function render() { const s = SCRIPT(cur); const [who, said] = step === 0 ? ["You", s[0][1]] : step === 1 ? ["Friend", "Who's there?"] : step === 2 ? ["You", cur.who + "."] : step === 3 ? ["Friend", cur.who + " who?"] : ["You", cur.punch];
+  $("speaker").textContent = who === "You" ? "You say:" : "Your friend says:"; $("said").textContent = said; $("stepBtn").textContent = step >= 4 ? "\ud83d\udd01 Again" : "Next line \u2192";
+  if (step === 4) rimshot(); }
+$("stepBtn").addEventListener("click", () => { step = step >= 4 ? 0 : step + 1; render(); }); $("closeStage").addEventListener("click", () => $("stage").classList.add("hidden"));
+function rimshot() { try { const c = new AudioContext(); [0, .12, .3].forEach((t, i) => { const o = c.createOscillator(), g = c.createGain(); o.type = "triangle"; o.frequency.value = [180, 140, 900][i]; g.gain.setValueAtTime(.2, c.currentTime + t); g.gain.exponentialRampToValueAtTime(.001, c.currentTime + t + .15); o.connect(g); g.connect(c.destination); o.start(c.currentTime + t); o.stop(c.currentTime + t + .16); }); } catch {} }
+
+async function make() {
+  if (busy) return; const name = $("name").value.trim();
+  if (!ai.ready) { const left = CLASSICS.filter(([w]) => !used.includes(w)); const pick = (left.length ? left : CLASSICS).sort(() => Math.random() - 0.5).slice(0, 4); jokes = pick.map(([who, punch]) => ({ who, punch })); used.push(...pick.map((p) => p[0])); drawList();
+    $("note").textContent = (ai.error ? "The AI isn't available" : "The AI is still loading" + (ai.percent != null ? " (" + ai.percent + "%)" : "")) + ", so here are classic jokes." + (name ? " Name jokes need the AI." : ""); return; }
+  busy = true; $("go").classList.add("busy"); $("note").textContent = "Knocking on the idea door...";
+  try { const res = await fetch("/api/jokes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theme, name, avoid: used }) }); const r = await res.json(); if (!res.ok) throw new Error(r.error); jokes = r; used.push(...r.map((j) => j.who)); drawList(); $("note").textContent = "Fresh jokes from the on-device AI. Try acting one out!"; }
+  catch (err) { $("note").textContent = err.message; }
+  busy = false; $("go").classList.remove("busy");
+}
+$("go").addEventListener("click", make); $("name").addEventListener("keydown", (e) => { if (e.key === "Enter") make(); });
+function drawFavs() { const box = $("favs"); box.innerHTML = favs.length ? "" : '<p class="empty">Save your favorite jokes to tell later.</p>';
+  favs.forEach((j) => { const r = document.createElement("div"); r.className = "fav"; const s = document.createElement("span"); s.textContent = j.who + " who? " + j.punch; const a = document.createElement("button"); a.className = "ghost"; a.textContent = "\ud83c\udfad"; a.setAttribute("aria-label", "Act it out"); a.addEventListener("click", () => perform(j));
+    const x = document.createElement("button"); x.className = "ghost"; x.textContent = "Remove"; x.addEventListener("click", () => { favs = favs.filter((k) => k !== j); persist(); drawFavs(); }); r.append(s, a, x); box.append(r); }); }
+
+async function checkStatus() {
+  try { ai = await (await fetch("/api/status")).json();
+    if (ai.error) return setStatus("AI error: " + ai.error + ". Classic jokes still work.", "err");
+    if (ai.ready) return setStatus("AI joke maker ready. It runs on your device.", "ok");
+    setStatus(ai.message + (ai.percent != null ? " " + ai.percent + "%" : "") + " Classic jokes work meanwhile.");
+  } catch { ai = { ready: false, error: "the server can't be reached" }; setStatus("Can't reach the server. Open http://localhost:3094 and make sure npm start is running.", "err"); return; }
+  setTimeout(checkStatus, 1500);
+}
+function setStatus(t, c = "") { $("status").textContent = t; $("status").className = c; }
+drawFavs(); checkStatus();
+</script>
+</body>
+</html>
